@@ -20,7 +20,9 @@ defmodule VideoRoom.MixProject do
 
   defp deps do
     [
-      {:membrane_rtc_engine, "~> 0.1.0-alpha"},
+      # {:membrane_rtc_engine, "~> 0.1.0-alpha"},
+      # {:membrane_rtc_engine, path: "/Users/feliks/membrane/membrane_rtc_engine"},
+      {:membrane_rtc_engine, git: "git@github.com:membraneframework/membrane_rtc_engine.git", branch: "non-concurrent_ice_restart"},
       {:plug_cowboy, "~> 2.0"},
       {:phoenix, "~> 1.5"},
       {:phoenix_html, "~> 2.14"},
