@@ -22,7 +22,7 @@ defmodule Membrane.Demo.RTP.SendPipeline do
         audio_src: %Membrane.Hackney.Source{
           location: "https://membraneframework.github.io/static/samples/beep.opus"
         },
-        audio_parser: Membrane.Opus.Parser,
+        audio_parser: %Membrane.Opus.Parser{input_delimitted?: true, delimitation: :undelimit},
         rtp: %RTP.SessionBin{
           secure?: secure?,
           srtp_policies: [
