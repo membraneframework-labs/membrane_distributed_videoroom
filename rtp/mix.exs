@@ -24,10 +24,10 @@ defmodule Membrane.Demo.RTP.MixProject do
   defp deps do
     [
       {:membrane_core, github: "membraneframework/membrane-core", branch: "add-timestamps-to-buffer", override: true},
-      {:membrane_rtp_plugin, github: "membraneframework/membrane_rtp_plugin", branch: "migration-to-buffer-with-pts-dts"},
+      {:membrane_rtp_plugin, path: "/Users/andrzej/Membrane/membrane_rtp_plugin"},
       {:membrane_element_udp, "~> 0.5.1"},
-      {:membrane_h264_ffmpeg_plugin, github: "membraneframework/membrane_h264_ffmpeg_plugin", branch: "migration-to-buffer-with-pts-dts"},
-      {:membrane_rtp_h264_plugin, github: "membraneframework/membrane_rtp_h264_plugin", branch: "migration-to-buffer-with-pts-dts"},
+      {:membrane_h264_ffmpeg_plugin, path: "/Users/andrzej/Membrane/membrane_h264_ffmpeg_plugin"},
+      {:membrane_rtp_h264_plugin, path: "/Users/andrzej/Membrane/membrane_rtp_h264_plugin"},
       {:membrane_opus_plugin, github: "membraneframework/membrane_opus_plugin", branch: "parser-adds-pts-timestamps"},
       {:membrane_rtp_opus_plugin, "~> 0.3.0"},
       {:membrane_sdl_plugin, "~> 0.9.0"},
