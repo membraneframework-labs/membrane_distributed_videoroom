@@ -23,7 +23,7 @@ defmodule Membrane.Demo.RTP.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:membrane_core, "~> 0.8.0",},
+      {:membrane_core, "~> 0.8.0"},
       {:membrane_rtp_plugin, "~> 0.10.0"},
       {:membrane_element_udp, "~> 0.6.0"},
       {:membrane_rtp_h264_plugin, "~> 0.7.1"},
