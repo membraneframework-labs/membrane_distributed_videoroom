@@ -46,14 +46,14 @@ defmodule Membrane.Demo.RTP.SendPipeline do
       links: [
         link(:video_src)
         |> to(:video_parser)
-        |> via_in(Pad.ref(:input, video_ssrc))
+        |> via_in(Pad.ref(:input, video_ssrc), options: [payloader: Membrane.RTP.H264.Payloader])
         |> to(:rtp)
         |> via_out(Pad.ref(:rtp_output, video_ssrc), options: [encoding: :H264])
         |> to(:video_realtimer)
         |> to(:video_sink),
         link(:audio_src)
         |> to(:audio_parser)
-        |> via_in(Pad.ref(:input, audio_ssrc))
+        |> via_in(Pad.ref(:input, audio_ssrc), options: [payloader: Membrane.RTP.Opus.Payloader])
         |> to(:rtp)
         |> via_out(Pad.ref(:rtp_output, audio_ssrc), options: [encoding: :OPUS])
         |> to(:audio_realtimer)
