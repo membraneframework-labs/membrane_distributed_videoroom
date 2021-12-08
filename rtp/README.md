@@ -33,10 +33,10 @@ The stream can also be sent with GStreamer:
 
 ```bash
 # For audio
-gst-launch-1.0 -v audiotestsrc ! lamemp3enc ! rtpmpapay pt=127 ! udpsink host=127.0.0.1 port=5000
+gst-launch-1.0 -v audiotestsrc wave=ticks ! audio/x-raw,format=S16LE,rate=48000,channels=2 ! opusenc ! rtpopuspay pt=120 ! udpsink host=127.0.0.1 port=5000
 
 # For video
-gst-launch-1.0 -v videotestsrc ! video/x-raw,format=I420 ! x264enc ! rtph264pay pt=96 ! udpsink host=127.0.0.1 port=5000
+gst-launch-1.0 -v videotestsrc pattern=ball ! video/x-raw,format=I420 ! x264enc ! rtph264pay pt=96 ! udpsink host=127.0.0.1 port=5000
 ```
 
 ## Copyright and License
