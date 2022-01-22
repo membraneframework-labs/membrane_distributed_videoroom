@@ -21,6 +21,10 @@ interface SetupCallbacks {
   onScreensharingEnd: () => Promise<void>;
 }
 
+interface SimulcastCallbacks {
+  onSelectEncoding: (peerId: string, encoding: string) => void;
+}
+
 type MediaStreams = {
   audioStream: MediaStream | null;
   videoStream: MediaStream | null;
@@ -203,7 +207,8 @@ function adjustScreensharingGridStyles() {
 export function addVideoElement(
   peerId: string,
   label: string,
-  isLocalVideo: boolean
+  isLocalVideo: boolean,
+  simulcastCallbacks: SimulcastCallbacks
 ): void {
   const videoId = elementId(peerId, "video");
   const audioId = elementId(peerId, "audio");
@@ -212,7 +217,7 @@ export function addVideoElement(
   let audio = document.getElementById(audioId) as HTMLAudioElement;
 
   if (!video && !audio) {
-    const values = setupVideoFeed(peerId, label, isLocalVideo);
+    const values = setupVideoFeed(peerId, label, isLocalVideo, simulcastCallbacks);
     video = values.video;
     audio = values.audio;
   }
@@ -273,7 +278,15 @@ function replaceGridLayoutStyles(grid: HTMLElement, videosPerRow: number) {
   grid.classList.add(`md:grid-cols-${videosPerRow}`);
 }
 
-function setupVideoFeed(peerId: string, label: string, isLocalVideo: boolean) {
+export function updateEncoding(peerId: string, encoding: string) {
+  const feed = document.getElementById(elementId(peerId, "feed"))!;
+  const videoEncoding = feed.querySelector(
+    "div[name='video-encoding']"
+  ) as HTMLDivElement;
+  videoEncoding.innerText = "Encoding: " + encoding;
+}
+
+function setupVideoFeed(peerId: string, label: string, isLocalVideo: boolean, simulcastCallbacks: SimulcastCallbacks) {
   const copy = (
     document.querySelector("#video-feed-template") as HTMLTemplateElement
   ).content.cloneNode(true) as Element;
@@ -283,6 +296,9 @@ function setupVideoFeed(peerId: string, label: string, isLocalVideo: boolean) {
   const videoLabel = feed.querySelector(
     "div[name='video-label']"
   ) as HTMLDivElement;
+  const encodingSelect = feed.querySelector(
+    "select[name='video-encoding-select']"
+  ) as HTMLSelectElement;
 
   feed.id = elementId(peerId, "feed");
   videoLabel.innerText = label;
@@ -294,6 +310,11 @@ function setupVideoFeed(peerId: string, label: string, isLocalVideo: boolean) {
   const grid = document.querySelector("#videos-grid")!;
   grid.appendChild(feed);
   resizeVideosGrid("videos-grid");
+
+  encodingSelect.onchange = (obj) => {
+    console.log("encoding selected", obj.target!.value);
+    simulcastCallbacks.onSelectEncoding(peerId, obj.target!.value);
+  };
 
   return { audio, video };
 }

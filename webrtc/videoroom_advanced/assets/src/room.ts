@@ -16,6 +16,7 @@ import {
   attachScreensharing,
   detachScreensharing,
   toggleScreensharing,
+  updateEncoding
 } from "./room_ui";
 import {
   MembraneWebRTC,
@@ -64,12 +65,12 @@ export class Room {
           this.localVideoStream
             ?.getTracks()
             .forEach((track) =>
-              this.webrtc.addTrack(track, this.localVideoStream!)
+              this.webrtc.addTrack(track, this.localVideoStream!, {}, true)
             );
 
           this.peers = peersInRoom;
           this.peers.forEach((peer) => {
-            addVideoElement(peer.id, peer.metadata.displayName, false);
+            addVideoElement(peer.id, peer.metadata.displayName, false, {onSelectEncoding: this.onSelectEncoding});
           });
           this.updateParticipantsList();
         },
@@ -77,7 +78,8 @@ export class Room {
           throw `Peer denied.`;
         },
         onTrackReady: ({ stream, peer, metadata }) => {
-          if (metadata.type === "screensharing") {
+          console.log(stream?.getTracks());
+          if (metadata && metadata.type === "screensharing") {
             attachScreensharing(
               peer.id,
               `(${peer.metadata.displayName}) Screen`,
@@ -96,7 +98,7 @@ export class Room {
         onPeerJoined: (peer) => {
           this.peers.push(peer);
           this.updateParticipantsList();
-          addVideoElement(peer.id, peer.metadata.displayName, false);
+          addVideoElement(peer.id, peer.metadata.displayName, false, {onSelectEncoding: this.onSelectEncoding});
         },
         onPeerLeft: (peer) => {
           this.peers = this.peers.filter((p) => p.id !== peer.id);
@@ -104,6 +106,9 @@ export class Room {
           this.updateParticipantsList();
         },
         onPeerUpdated: (ctx) => {},
+        onEncodingSwitched: (peerId: string, trackId: string, encoding: string) => {
+          updateEncoding(peerId, encoding);
+        }
       },
     });
 
@@ -129,7 +134,7 @@ export class Room {
       console.error("Error while getting local video stream", error);
     }
 
-    addVideoElement(LOCAL_PEER_ID, "Me", true);
+    addVideoElement(LOCAL_PEER_ID, "Me", true, {onSelectEncoding: this.onSelectEncoding});
 
     attachStream(LOCAL_PEER_ID, {
       audioStream: this.localAudioStream,
@@ -193,6 +198,10 @@ export class Room {
 
     this.webrtc.join({ displayName: this.displayName });
   };
+
+  private onSelectEncoding = (peerId: string, encoding: string): void => {
+    this.webrtc.selectTrackEncoding(peerId, encoding);
+  }
 
   private leave = () => {
     this.webrtc.leave();
