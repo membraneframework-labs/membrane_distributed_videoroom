@@ -12,8 +12,8 @@ defmodule Videoroom.Room do
 
   @mix_env Mix.env()
 
-  def start(init_arg, opts) do
-    GenServer.start(__MODULE__, init_arg, opts)
+  def start(room_opts, opts) do
+    GenServer.start(__MODULE__, room_opts, opts)
   end
 
   def start_link(opts) do
@@ -21,13 +21,16 @@ defmodule Videoroom.Room do
   end
 
   @impl true
-  def init(room_id) do
+  def init(room_opts) do
+    room_id = room_opts[:id]
+    room_type = room_opts[:type]
+
     Membrane.Logger.info("Spawning room process: #{inspect(self())}")
 
     turn_mock_ip = Application.fetch_env!(:membrane_videoroom_demo, :integrated_turn_ip)
     turn_ip = if @mix_env == :prod, do: {0, 0, 0, 0}, else: turn_mock_ip
 
-    trace_ctx = create_context("room:#{room_id}")
+    trace_ctx = create_context("room:#{room_type}:#{room_id}")
 
     rtc_engine_options = [
       id: room_id,
@@ -72,6 +75,19 @@ defmodule Videoroom.Room do
 
     {:ok, pid} = Membrane.RTC.Engine.start(rtc_engine_options, [])
     Engine.register(pid, self())
+
+    endpoint_type =
+      case room_type do
+        :ingress -> :output
+        :egress -> :input
+      end
+
+    endpoint = %Membrane.RTC.Engine.Endpoint.Distributed{
+      pair_id: room_id,
+      type: endpoint_type
+    }
+
+    Engine.add_endpoint(pid, endpoint)
 
     {:ok,
      %{

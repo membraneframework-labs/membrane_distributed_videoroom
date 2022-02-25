@@ -14,7 +14,8 @@ defmodule VideoRoom.Application do
     children = [
       VideoRoomWeb.Endpoint,
       {Phoenix.PubSub, name: VideoRoom.PubSub},
-      {Registry, keys: :unique, name: Videoroom.Room.Registry}
+      {Registry, keys: :unique, name: Videoroom.Room.Registry},
+      {Registry, keys: :duplicate, name: Membrane.RTC.Engine.Endpoint.Distributed}
     ]
 
     opts = [strategy: :one_for_one, name: __MODULE__]

@@ -26,6 +26,8 @@ import { Push, Socket } from "phoenix";
 import { parse } from "query-string";
 
 export class Room {
+  private customId: string;
+
   private peers: Peer[] = [];
   private displayName: string;
   private localAudioStream: MediaStream | null = null;
@@ -33,82 +35,174 @@ export class Room {
   private localScreensharing: MediaStream | null = null;
   private localScreensharingTrackId: string | null = null;
 
-  private webrtc: MembraneWebRTC;
+  private ingressWebrtc: MembraneWebRTC;
+  private egressWebrtc: MembraneWebRTC;
 
   private socket;
   private webrtcSocketRefs: string[] = [];
-  private webrtcChannel;
+  private webrtcIngressChannel;
+  private webrtcEgressChannel;
+
+  private everyPeerMap: Map<string, Peer> = new Map();
+
+  private ingressPeer: Peer = {
+    id: "",
+    metadata: {},
+    trackIdToMetadata: new Map(),
+  };
+  private egressPeer: Peer = {
+    id: "",
+    metadata: {},
+    trackIdToMetadata: new Map(),
+  };
 
   constructor() {
+    this.customId = this.generateRandomId();
+
     this.socket = new Socket("/socket");
     this.socket.connect();
     this.displayName = this.parseUrl();
-    this.webrtcChannel = this.socket.channel(`room:${getRoomId()}`);
+    // this.webrtcChannel = this.socket.channel(`room:${getRoomId()}`);
+    this.webrtcIngressChannel = this.socket.channel(
+      `room:ingress:${getRoomId()}`
+    );
+    this.webrtcEgressChannel = this.socket.channel(
+      `room:egress:${getRoomId()}`
+    );
 
     this.webrtcSocketRefs.push(this.socket.onError(this.leave));
     this.webrtcSocketRefs.push(this.socket.onClose(this.leave));
 
-    this.webrtc = new MembraneWebRTC({
-      callbacks: {
-        onSendMediaEvent: (mediaEvent: SerializedMediaEvent) => {
-          this.webrtcChannel.push("mediaEvent", { data: mediaEvent });
-        },
-        onConnectionError: setErrorMessage,
-        onJoinSuccess: (peerId, peersInRoom) => {
-          this.localAudioStream
-            ?.getTracks()
-            .forEach((track) =>
-              this.webrtc.addTrack(track, this.localAudioStream!)
-            );
+    this.ingressWebrtc = new MembraneWebRTC(
+      {
+        callbacks: {
+          onSendMediaEvent: (mediaEvent: SerializedMediaEvent) => {
+            this.webrtcIngressChannel.push("mediaEvent", { data: mediaEvent });
+          },
+          onConnectionError: setErrorMessage,
+          onJoinSuccess: (peerId, peersInRoom) => {
+            console.log("ingress MembraneWebRTC peerID", peerId);
+            console.log("peers in ingress MembraneWebRTC", peersInRoom);
 
-          this.localVideoStream
-            ?.getTracks()
-            .forEach((track) =>
-              this.webrtc.addTrack(track, this.localVideoStream!)
-            );
+            const audioMetadata = { peerCustomId: this.customId };
+            this.localAudioStream?.getTracks().forEach((track) => {
+              const trackId = this.ingressWebrtc.addTrack(
+                track,
+                this.localAudioStream!,
+                audioMetadata
+              );
+              this.ingressPeer.trackIdToMetadata.set(trackId, audioMetadata);
+            });
 
-          this.peers = peersInRoom;
-          this.peers.forEach((peer) => {
-            addVideoElement(peer.id, peer.metadata.displayName, false);
-          });
-          this.updateParticipantsList();
+            const videoMetadata = { peerCustomId: this.customId };
+            this.localVideoStream?.getTracks().forEach((track) => {
+              const trackId = this.ingressWebrtc.addTrack(
+                track,
+                this.localVideoStream!,
+                videoMetadata
+              );
+              this.ingressPeer.trackIdToMetadata.set(trackId, audioMetadata);
+            });
+
+            this.ingressPeer.id = peerId;
+            this.everyPeerMap.set(this.ingressPeer.id, this.ingressPeer);
+            peersInRoom.forEach((peer) => this.everyPeerMap.set(peer.id, peer));
+          },
+          onJoinError: (metadata) => {
+            throw `Peer denied.`;
+          },
+          onPeerJoined: (peer) => {
+            this.everyPeerMap.set(peer.id, peer);
+          },
+          onPeerLeft: (peer) => {
+            this.everyPeerMap.delete(peer.id);
+          },
         },
-        onJoinError: (metadata) => {
-          throw `Peer denied.`;
-        },
-        onTrackReady: ({ stream, peer, metadata }) => {
-          if (metadata.type === "screensharing") {
-            attachScreensharing(
-              peer.id,
-              `(${peer.metadata.displayName}) Screen`,
-              stream!
-            );
-          } else {
-            attachStream(peer.id, { audioStream: stream, videoStream: stream });
-          }
-        },
-        onTrackAdded: (ctx) => {},
-        onTrackRemoved: (ctx) => {
-          if (ctx.metadata.type === "screensharing") {
-            detachScreensharing(ctx.peer.id);
-          }
-        },
-        onPeerJoined: (peer) => {
-          this.peers.push(peer);
-          this.updateParticipantsList();
-          addVideoElement(peer.id, peer.metadata.displayName, false);
-        },
-        onPeerLeft: (peer) => {
-          this.peers = this.peers.filter((p) => p.id !== peer.id);
-          removeVideoElement(peer.id);
-          this.updateParticipantsList();
-        },
-        onPeerUpdated: (ctx) => {},
       },
-    });
+      this.peerResolver(this.everyPeerMap)
+    );
 
-    this.webrtcChannel.on("mediaEvent", (event: any) =>
-      this.webrtc.receiveMediaEvent(event.data)
+    this.egressWebrtc = new MembraneWebRTC(
+      {
+        callbacks: {
+          onSendMediaEvent: (mediaEvent: SerializedMediaEvent) => {
+            this.webrtcEgressChannel.push("mediaEvent", { data: mediaEvent });
+          },
+          onConnectionError: setErrorMessage,
+          onJoinSuccess: (peerId, peersInRoom) => {
+            console.log("egress MembraneWebRTC peerID", peerId);
+            console.log("peers in egress MembraneWebRTC", peersInRoom);
+            this.peers = peersInRoom;
+            this.peers.forEach((peer) => {
+              addVideoElement(
+                peer.metadata.customId,
+                peer.metadata.displayName,
+                false
+              );
+            });
+            this.updateParticipantsList();
+
+            this.egressPeer.id = peerId;
+            this.everyPeerMap.set(this.egressPeer.id, this.egressPeer);
+          },
+          onJoinError: (metadata) => {
+            throw `Peer denied.`;
+          },
+          onTrackReady: ({ stream, peer, metadata }) => {
+            if (metadata.type === "screensharing") {
+              attachScreensharing(
+                metadata.peerCustomId,
+                // `(${peer.metadata.displayName}) Screen`, resolve real peer id
+                `() Screen`,
+                stream!
+              );
+            } else {
+              attachStream(metadata.peerCustomId, {
+                audioStream: stream,
+                videoStream: stream,
+              });
+            }
+          },
+          onTrackRemoved: (ctx) => {
+            if (ctx.metadata.type === "screensharing") {
+              detachScreensharing(ctx.metadata.peerCustomId);
+            }
+          },
+          onPeerJoined: (peer) => {
+            console.log("perr joined to egress node", peer);
+
+            this.everyPeerMap.set(peer.id, peer);
+
+            this.peers.push(peer);
+            this.updateParticipantsList();
+            addVideoElement(
+              peer.metadata.customId,
+              peer.metadata.displayName,
+              false
+            );
+          },
+          onPeerLeft: (peer) => {
+            console.log("perr left egress node", peer);
+
+            this.everyPeerMap.delete(peer.id);
+
+            this.peers = this.peers.filter(
+              (p) => p.metadata.customId !== peer.metadata.customId
+            );
+            removeVideoElement(peer.metadata.customId);
+            this.updateParticipantsList();
+          },
+        },
+      },
+      this.peerResolver(this.everyPeerMap)
+    );
+
+    this.webrtcIngressChannel.on("mediaEvent", (event: any) =>
+      this.ingressWebrtc.receiveMediaEvent(event.data)
+    );
+
+    this.webrtcEgressChannel.on("mediaEvent", (event: any) =>
+      this.egressWebrtc.receiveMediaEvent(event.data)
     );
   }
 
@@ -154,7 +248,8 @@ export class Room {
       videoStream: this.localVideoStream,
     });
 
-    await this.phoenixChannelPushResult(this.webrtcChannel.join());
+    await this.phoenixChannelPushResult(this.webrtcIngressChannel.join());
+    await this.phoenixChannelPushResult(this.webrtcEgressChannel.join());
   };
 
   public join = () => {
@@ -164,7 +259,7 @@ export class Room {
       this.localScreensharing.getTracks().forEach((track) => track.stop());
       this.localScreensharing = null;
 
-      this.webrtc.removeTrack(this.localScreensharingTrackId!);
+      this.ingressWebrtc.removeTrack(this.localScreensharingTrackId!);
       detachScreensharing(LOCAL_PEER_ID);
     };
 
@@ -175,7 +270,7 @@ export class Room {
         SCREENSHARING_MEDIA_CONSTRAINTS
       );
 
-      this.localScreensharingTrackId = this.webrtc.addTrack(
+      this.localScreensharingTrackId = this.ingressWebrtc.addTrack(
         this.localScreensharing.getVideoTracks()[0],
         this.localScreensharing,
         { type: "screensharing" }
@@ -209,12 +304,28 @@ export class Room {
       callbacks
     );
 
-    this.webrtc.join({ displayName: this.displayName });
+    addVideoElement(this.customId, this.displayName, false);
+
+    this.ingressPeer.metadata = {
+      displayName: this.displayName,
+      customId: this.customId,
+    };
+    this.egressPeer.metadata = {
+      displayName: this.displayName,
+      customId: this.customId,
+    };
+
+    this.ingressWebrtc.join(this.ingressPeer.metadata);
+    this.egressWebrtc.join(this.egressPeer.metadata);
   };
 
   private leave = () => {
-    this.webrtc.leave();
-    this.webrtcChannel.leave();
+    this.ingressWebrtc.leave();
+    this.egressWebrtc.leave();
+
+    this.webrtcIngressChannel.leave();
+    this.webrtcEgressChannel.leave();
+
     this.socket.off(this.webrtcSocketRefs);
     while (this.webrtcSocketRefs.length > 0) {
       this.webrtcSocketRefs.pop();
@@ -246,5 +357,25 @@ export class Room {
         .receive("ok", (response: any) => resolve(response))
         .receive("error", (response: any) => reject(response));
     });
+  };
+
+  private generateRandomId = (): string => {
+    const chars =
+      "AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz1234567890";
+    const charsArray = chars.split("");
+    return Array.from(Array(32).keys())
+      .map((i) => charsArray[Math.floor(Math.random() * charsArray.length)])
+      .join("");
+  };
+
+  private peerResolver = (
+    peersMap: Map<string, Peer>
+  ): ((id: string) => Peer) => {
+    return (id) => {
+      console.log("peerResolver peersMap", peersMap);
+      console.log("peersResolver id", id);
+
+      return peersMap.get(id)!;
+    };
   };
 }
