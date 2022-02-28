@@ -182,7 +182,17 @@ defmodule Videoroom.Room do
 
     Engine.remove_peer(state.rtc_engine, peer_id)
     {_elem, state} = pop_in(state, [:peer_channels, peer_id])
-    {:noreply, state}
+
+    if state.peer_channels == %{} do
+      {:stop, :no_peer_in_room, state}
+    else
+      {:noreply, state}
+    end
+  end
+
+  @impl true
+  def terminate(:no_peer_in_room, state) do
+    Membrane.RTC.Engine.stop_and_terminate(state.rtc_engine)
   end
 
   defp create_context(name) do
