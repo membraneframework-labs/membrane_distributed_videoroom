@@ -11,6 +11,8 @@ defmodule Videoroom.Room do
   require OpenTelemetry.Tracer, as: Tracer
 
   @mix_env Mix.env()
+  @ingress_node :"ingress@Felikss-MacBook-Pro"
+  @egress_node :"egress@Felikss-MacBook-Pro"
 
   def start(room_opts, opts) do
     GenServer.start(__MODULE__, room_opts, opts)
@@ -63,18 +65,15 @@ defmodule Videoroom.Room do
       dtls_cert: Application.get_env(:membrane_videoroom_demo, :dtls_cert)
     ]
 
-    if use_integrated_turn do
-      tcp_turn_port = Application.get_env(:membrane_videoroom_demo, :integrated_tcp_turn_port)
-      TURNManager.ensure_tcp_turn_launched(integrated_turn_options, port: tcp_turn_port)
+    # if use_integrated_turn do
+    #   tcp_turn_port = Application.get_env(:membrane_videoroom_demo, :integrated_tcp_turn_port)
+    #   TURNManager.ensure_tcp_turn_launched(integrated_turn_options, port: tcp_turn_port)
 
-      if turn_cert_file do
-        tls_turn_port = Application.get_env(:membrane_videoroom_demo, :integrated_tls_turn_port)
-        TURNManager.ensure_tls_turn_launched(integrated_turn_options, port: tls_turn_port)
-      end
-    end
-
-    {:ok, pid} = Membrane.RTC.Engine.start(rtc_engine_options, [])
-    Engine.register(pid, self())
+    #   if turn_cert_file do
+    #     tls_turn_port = Application.get_env(:membrane_videoroom_demo, :integrated_tls_turn_port)
+    #     TURNManager.ensure_tls_turn_launched(integrated_turn_options, port: tls_turn_port)
+    #   end
+    # end
 
     endpoint_type =
       case room_type do
@@ -82,7 +81,24 @@ defmodule Videoroom.Room do
         :egress -> :input
       end
 
+    # {:ok, pid} = Membrane.RTC.Engine.start(rtc_engine_options, [])
+
+    {my_node, twin_node} =
+      case room_type do
+        :ingress -> {@ingress_node, Node.self()}
+        :egress -> {Node.self(), @ingress_node}
+      end
+
+      # {Node.self(), Node.self()}
+
+      # {@ingress_node, @ingress_node}
+
+    {:ok, pid} = Membrane.RTC.Engine.start(my_node, rtc_engine_options, [])
+
+    Engine.register(pid, self())
+
     endpoint = %Membrane.RTC.Engine.Endpoint.Distributed{
+      twin_node: twin_node,
       pair_id: room_id,
       type: endpoint_type
     }
@@ -157,7 +173,8 @@ defmodule Videoroom.Room do
     }
 
     Engine.accept_peer(rtc_engine, peer.id)
-    :ok = Engine.add_endpoint(rtc_engine, endpoint, peer_id: peer.id, node: peer_node)
+    # :ok = Engine.add_endpoint(rtc_engine, endpoint, peer_id: peer.id, node: peer_node)
+    :ok = Engine.add_endpoint(rtc_engine, endpoint, peer_id: peer.id)
 
     {:noreply, state}
   end
@@ -193,6 +210,11 @@ defmodule Videoroom.Room do
   @impl true
   def terminate(:no_peer_in_room, state) do
     Membrane.RTC.Engine.stop_and_terminate(state.rtc_engine)
+  end
+
+  #TODO: delete this later
+  def connect_to_master_node() do
+    Node.connect(:"master@Felikss-MacBook-Pro")
   end
 
   defp create_context(name) do

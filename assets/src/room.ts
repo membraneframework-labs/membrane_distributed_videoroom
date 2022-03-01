@@ -115,7 +115,7 @@ export class Room {
             this.everyPeerMap.set(peer.id, peer);
           },
           onPeerLeft: (peer) => {
-            this.everyPeerMap.delete(peer.id);
+            // this.everyPeerMap.delete(peer.id);
           },
         },
       },
@@ -184,7 +184,7 @@ export class Room {
           onPeerLeft: (peer) => {
             console.log("perr left egress node", peer);
 
-            this.everyPeerMap.delete(peer.id);
+            // this.everyPeerMap.delete(peer.id);
 
             this.peers = this.peers.filter(
               (p) => p.metadata.customId !== peer.metadata.customId
