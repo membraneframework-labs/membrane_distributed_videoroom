@@ -83,11 +83,14 @@ defmodule Videoroom.Room do
 
     # {:ok, pid} = Membrane.RTC.Engine.start(rtc_engine_options, [])
 
-    {my_node, twin_node} =
+    {my_node, twin_node, endpoint_module} =
       case room_type do
-        :ingress -> {@ingress_node, Node.self()}
-        :egress -> {Node.self(), @ingress_node}
+        :ingress -> {@ingress_node, @egress_node, Membrane.RTC.Engine.Endpoint.DistributedSink}
+        :egress -> {@egress_node, @ingress_node, Membrane.RTC.Engine.Endpoint.DistributedSource}
       end
+
+    pair_id = String.split(room_id, ":") |> Enum.at(1)
+    endpoint = struct!(endpoint_module, twin_node: twin_node, pair_id: pair_id)
 
       # {Node.self(), Node.self()}
 
@@ -97,11 +100,11 @@ defmodule Videoroom.Room do
 
     Engine.register(pid, self())
 
-    endpoint = %Membrane.RTC.Engine.Endpoint.Distributed{
-      twin_node: twin_node,
-      pair_id: room_id,
-      type: endpoint_type
-    }
+    # endpoint = %Membrane.RTC.Engine.Endpoint.Distributed{
+    #   twin_node: twin_node,
+    #   pair_id: room_id,
+    #   type: endpoint_type
+    # }
 
     Engine.add_endpoint(pid, endpoint)
 

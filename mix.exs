@@ -24,7 +24,7 @@ defmodule VideoRoom.MixProject do
       {:membrane_ice_plugin, path: "/Users/feliks/membrane/membrane_ice_plugin", override: true},
 
       {:membrane_rtc_engine, path: "/Users/feliks/membrane/membrane_rtc_engine"},
-      {:membrane_webrtc_plugin, github: "membraneframework/membrane_webrtc_plugin"},
+      {:membrane_webrtc_plugin, path: "/Users/feliks/membrane/membrane_webrtc_plugin", override: true},
       {:plug_cowboy, "~> 2.5.2"},
       {:phoenix, "~> 1.6"},
       {:phoenix_html, "~> 3.0"},

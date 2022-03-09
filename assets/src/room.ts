@@ -43,17 +43,13 @@ export class Room {
   private webrtcIngressChannel;
   private webrtcEgressChannel;
 
-  private everyPeerMap: Map<string, Peer> = new Map();
-
   private ingressPeer: Peer = {
     id: "",
     metadata: {},
-    trackIdToMetadata: new Map(),
   };
   private egressPeer: Peer = {
     id: "",
     metadata: {},
-    trackIdToMetadata: new Map(),
   };
 
   constructor() {
@@ -62,7 +58,6 @@ export class Room {
     this.socket = new Socket("/socket");
     this.socket.connect();
     this.displayName = this.parseUrl();
-    // this.webrtcChannel = this.socket.channel(`room:${getRoomId()}`);
     this.webrtcIngressChannel = this.socket.channel(
       `room:ingress:${getRoomId()}`
     );
@@ -73,129 +68,99 @@ export class Room {
     this.webrtcSocketRefs.push(this.socket.onError(this.leave));
     this.webrtcSocketRefs.push(this.socket.onClose(this.leave));
 
-    this.ingressWebrtc = new MembraneWebRTC(
-      {
-        callbacks: {
-          onSendMediaEvent: (mediaEvent: SerializedMediaEvent) => {
-            this.webrtcIngressChannel.push("mediaEvent", { data: mediaEvent });
-          },
-          onConnectionError: setErrorMessage,
-          onJoinSuccess: (peerId, peersInRoom) => {
-            console.log("ingress MembraneWebRTC peerID", peerId);
-            console.log("peers in ingress MembraneWebRTC", peersInRoom);
+    this.ingressWebrtc = new MembraneWebRTC({
+      callbacks: {
+        onSendMediaEvent: (mediaEvent: SerializedMediaEvent) => {
+          this.webrtcIngressChannel.push("mediaEvent", { data: mediaEvent });
+        },
+        onConnectionError: setErrorMessage,
+        onJoinSuccess: (peerId, peersInRoom) => {
+          const audioMetadata = { peerCustomId: this.customId };
+          this.localAudioStream?.getTracks().forEach((track) => {
+            const trackId = this.ingressWebrtc.addTrack(
+              track,
+              this.localAudioStream!,
+              audioMetadata
+            );
+          });
 
-            const audioMetadata = { peerCustomId: this.customId };
-            this.localAudioStream?.getTracks().forEach((track) => {
-              const trackId = this.ingressWebrtc.addTrack(
-                track,
-                this.localAudioStream!,
-                audioMetadata
-              );
-              this.ingressPeer.trackIdToMetadata.set(trackId, audioMetadata);
-            });
+          const videoMetadata = { peerCustomId: this.customId };
+          this.localVideoStream?.getTracks().forEach((track) => {
+            const trackId = this.ingressWebrtc.addTrack(
+              track,
+              this.localVideoStream!,
+              videoMetadata
+            );
+          });
 
-            const videoMetadata = { peerCustomId: this.customId };
-            this.localVideoStream?.getTracks().forEach((track) => {
-              const trackId = this.ingressWebrtc.addTrack(
-                track,
-                this.localVideoStream!,
-                videoMetadata
-              );
-              this.ingressPeer.trackIdToMetadata.set(trackId, audioMetadata);
-            });
-
-            this.ingressPeer.id = peerId;
-            this.everyPeerMap.set(this.ingressPeer.id, this.ingressPeer);
-            peersInRoom.forEach((peer) => this.everyPeerMap.set(peer.id, peer));
-          },
-          onJoinError: (metadata) => {
-            throw `Peer denied.`;
-          },
-          onPeerJoined: (peer) => {
-            this.everyPeerMap.set(peer.id, peer);
-          },
-          onPeerLeft: (peer) => {
-            // this.everyPeerMap.delete(peer.id);
-          },
+          this.ingressPeer.id = peerId;
+        },
+        onJoinError: (metadata) => {
+          throw `Peer denied.`;
         },
       },
-      this.peerResolver(this.everyPeerMap)
-    );
+    });
 
-    this.egressWebrtc = new MembraneWebRTC(
-      {
-        callbacks: {
-          onSendMediaEvent: (mediaEvent: SerializedMediaEvent) => {
-            this.webrtcEgressChannel.push("mediaEvent", { data: mediaEvent });
-          },
-          onConnectionError: setErrorMessage,
-          onJoinSuccess: (peerId, peersInRoom) => {
-            console.log("egress MembraneWebRTC peerID", peerId);
-            console.log("peers in egress MembraneWebRTC", peersInRoom);
-            this.peers = peersInRoom;
-            this.peers.forEach((peer) => {
-              addVideoElement(
-                peer.metadata.customId,
-                peer.metadata.displayName,
-                false
-              );
-            });
-            this.updateParticipantsList();
-
-            this.egressPeer.id = peerId;
-            this.everyPeerMap.set(this.egressPeer.id, this.egressPeer);
-          },
-          onJoinError: (metadata) => {
-            throw `Peer denied.`;
-          },
-          onTrackReady: ({ stream, peer, metadata }) => {
-            if (metadata.type === "screensharing") {
-              attachScreensharing(
-                metadata.peerCustomId,
-                // `(${peer.metadata.displayName}) Screen`, resolve real peer id
-                `() Screen`,
-                stream!
-              );
-            } else {
-              attachStream(metadata.peerCustomId, {
-                audioStream: stream,
-                videoStream: stream,
-              });
-            }
-          },
-          onTrackRemoved: (ctx) => {
-            if (ctx.metadata.type === "screensharing") {
-              detachScreensharing(ctx.metadata.peerCustomId);
-            }
-          },
-          onPeerJoined: (peer) => {
-            console.log("perr joined to egress node", peer);
-
-            this.everyPeerMap.set(peer.id, peer);
-
-            this.peers.push(peer);
-            this.updateParticipantsList();
+    this.egressWebrtc = new MembraneWebRTC({
+      callbacks: {
+        onSendMediaEvent: (mediaEvent: SerializedMediaEvent) => {
+          this.webrtcEgressChannel.push("mediaEvent", { data: mediaEvent });
+        },
+        onConnectionError: setErrorMessage,
+        onJoinSuccess: (peerId, peersInRoom) => {
+          this.peers = peersInRoom;
+          this.peers.forEach((peer) => {
             addVideoElement(
               peer.metadata.customId,
               peer.metadata.displayName,
               false
             );
-          },
-          onPeerLeft: (peer) => {
-            console.log("perr left egress node", peer);
+          });
+          this.updateParticipantsList();
 
-            // this.everyPeerMap.delete(peer.id);
-
-            this.peers = this.peers.filter(
-              (p) => p.metadata.customId !== peer.metadata.customId
+          this.egressPeer.id = peerId;
+        },
+        onJoinError: (metadata) => {
+          throw `Peer denied.`;
+        },
+        onTrackReady: ({ stream, metadata }) => {
+          if (metadata.type === "screensharing") {
+            attachScreensharing(
+              metadata.peerCustomId,
+              // `(${peer.metadata.displayName}) Screen`, resolve real peer id
+              `() Screen`,
+              stream!
             );
-            removeVideoElement(peer.metadata.customId);
-            this.updateParticipantsList();
-          },
+          } else {
+            attachStream(metadata.peerCustomId, {
+              audioStream: stream,
+              videoStream: stream,
+            });
+          }
+        },
+        onTrackRemoved: (ctx) => {
+          if (ctx.metadata.type === "screensharing") {
+            detachScreensharing(ctx.metadata.peerCustomId);
+          }
+        },
+        onPeerJoined: (peer) => {
+          this.peers.push(peer);
+          this.updateParticipantsList();
+          addVideoElement(
+            peer.metadata.customId,
+            peer.metadata.displayName,
+            false
+          );
+        },
+        onPeerLeft: (peer) => {
+          this.peers = this.peers.filter(
+            (p) => p.metadata.customId !== peer.metadata.customId
+          );
+          removeVideoElement(peer.metadata.customId);
+          this.updateParticipantsList();
         },
       },
-      this.peerResolver(this.everyPeerMap)
-    );
+    });
 
     this.webrtcIngressChannel.on("mediaEvent", (event: any) =>
       this.ingressWebrtc.receiveMediaEvent(event.data)
@@ -366,16 +331,5 @@ export class Room {
     return Array.from(Array(32).keys())
       .map((i) => charsArray[Math.floor(Math.random() * charsArray.length)])
       .join("");
-  };
-
-  private peerResolver = (
-    peersMap: Map<string, Peer>
-  ): ((id: string) => Peer) => {
-    return (id) => {
-      console.log("peerResolver peersMap", peersMap);
-      console.log("peersResolver id", id);
-
-      return peersMap.get(id)!;
-    };
   };
 }
